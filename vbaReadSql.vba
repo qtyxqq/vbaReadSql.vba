@@ -1,50 +1,69 @@
-Sub ParseInserts()
-    Dim fPath As String
-    Dim fNum As Integer
-    Dim line As String
-    Dim values As String
+Sub ParseTextFiles()
+    
+    Dim folderPath As String
+    Dim fileExtension As String
+    Dim targetFile As String
+    Dim sqlLine As String
+    Dim sqlStatement As String
+    Dim fieldValues As Variant
+    Dim fieldValue As Variant
+    Dim sheetName As String
     Dim rowNum As Long
-    Dim ws As Worksheet
+    Dim colNum As Long
     
-    fPath = "C:\path\to\file.txt"
-    rowNum = 1
+    ' 设置文件夹路径和文件扩展名
+    folderPath = "差异结果\"
+    fileExtension = "*.txt"
     
-    ' 检查文件是否存在
-    If Dir(fPath) = "" Then
-        MsgBox "文件不存在！"
-        Exit Sub
-    End If
+    ' 打开 Excel 文件
+    Dim excelApp As New Excel.Application
+    Dim wb As Excel.Workbook
+    Dim ws As Excel.Worksheet
+    Set wb = excelApp.Workbooks.Add
+    Set ws = wb.Worksheets(1)
     
-    ' 打开文件
-    fNum = FreeFile
-    Open fPath For Input As #fNum
-    
-    ' 创建新的工作表
-    Set ws = ThisWorkbook.Worksheets.Add
-    
-    ' 读取文件内容并解析
-    Do While Not EOF(fNum)
-        Line Input #fNum, line ' 逐行读取文件内容
-        If InStr(line, "INSERT INTO") > 0 Then ' 找到 INSERT INTO 语句
-            values = Mid(line, InStr(line, "VALUES") + 7) ' 提取 VALUES 后面的内容
-            values = Replace(values, "'", "") ' 去除单引号
-            values = Replace(values, "),(", vbLf) ' 将多个值分隔成多行
-            values = Replace(values, "(", "") ' 去除左括号
-            values = Replace(values, ")", "") ' 去除右括号
-            ' 将多个字段分隔成多列，并写入工作表
-            ws.Cells(rowNum, 1).Resize(, UBound(Split(values, ",")) + 1).Value = Split(values, ",")
-            rowNum = rowNum + 1 ' 将行号加1
-        End If
+    ' 循环读取每个文件并解析 INSERT 语句中的字段值
+    targetFile = Dir(folderPath & fileExtension)
+    Do While targetFile <> ""
+        ' 获取文件名作为表格名
+        sheetName = Left(targetFile, InStrRev(targetFile, ".") - 1)
+        ' 新建工作表并命名
+        Set ws = wb.Worksheets.Add(After:=wb.Worksheets(wb.Worksheets.Count))
+        ws.Name = sheetName
+        ' 初始化行号
+        rowNum = 1
+        ' 打开文本文件并逐行解析 INSERT 语句中的字段值
+        Open folderPath & targetFile For Input As #1
+        Do Until EOF(1)
+            Line Input #1, sqlLine
+            ' 检查行是否包含 INSERT 语句
+            If InStr(1, sqlLine, "INSERT INTO", vbTextCompare) > 0 Then
+                ' 解析 INSERT 语句并获取字段值
+                sqlStatement = Replace(sqlLine, "INSERT INTO", "VALUES", , , vbTextCompare)
+                sqlStatement = Replace(sqlStatement, ";", "", , , vbTextCompare)
+                sqlStatement = Replace(sqlStatement, "(", "", , , vbTextCompare)
+                sqlStatement = Replace(sqlStatement, ")", "", , , vbTextCompare)
+                sqlStatement = Replace(sqlStatement, ",", "|", , , vbTextCompare)
+                fieldValues = Split(sqlStatement, "|")
+                ' 将字段值写入表格
+                colNum = 1
+                For Each fieldValue In fieldValues
+                    ws.Cells(rowNum, colNum) = fieldValue
+                    colNum = colNum + 1
+                Next fieldValue
+                rowNum = rowNum + 1
+            End If
+        Loop
+        Close #1
+        ' 移动到下一个文件
+        targetFile = Dir()
     Loop
     
-    ' 关闭文件
-    Close #fNum
-    
-    ' 设置工作表标题
-    ws.Name = Left(fPath, InStrRev(fPath, ".") - 1) ' 工作表名为文件名（不包含扩展名）
-    ws.Cells(1, 1).Value = "Column 1"
-    ws.Cells(1, 2).Value = "Column 2"
-    ' ...
+    ' 保存 Excel 文件并退出
+    wb.SaveAs ThisWorkbook.Path & "\parsed_data.xlsx", FileFormat:=51
+    wb.Close
+    excelApp.Quit
     
     MsgBox "解析完成！"
+    
 End Sub
